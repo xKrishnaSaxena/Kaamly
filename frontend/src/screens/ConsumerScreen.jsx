@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { SKILLS, emojiFor, fmtDistance, labelFor } from '../constants'
-import { useGeo, useLocalStorage } from '../hooks'
+import { speak, useGeo, useLocalStorage } from '../hooks'
 import { Btn, Card, ChipGroup, Field, LocationField, Stars, TextArea, TextInput } from '../ui'
+import VoiceBar from '../VoiceBar'
 
 export default function ConsumerScreen() {
   const { coords, locate, locating, error } = useGeo()
@@ -15,6 +16,13 @@ export default function ConsumerScreen() {
   const [result, setResult] = useState(null) // { job, matches }
 
   const set = (k) => (e) => setIdentity({ ...identity, [k]: e.target.value })
+
+  const applyIntent = (intent) => {
+    if (intent.skill) setCategory(intent.skill)
+    if (intent.urgency) setUrgency(intent.urgency)
+    if (intent.description && intent.skill) setDescription(intent.description)
+    if (intent.skill) speak(`${labelFor(intent.skill)} chahiye. Aas paas ke workers dhoond rahe hain.`)
+  }
 
   const post = async () => {
     setMsg('')
@@ -115,6 +123,11 @@ export default function ConsumerScreen() {
   // ---- post-a-job form ----
   return (
     <div className="space-y-4">
+      <VoiceBar
+        roleHint="consumer"
+        onIntent={applyIntent}
+        example={'Try: "Electrician chahiye, short circuit"'}
+      />
       <Field label="Your name">
         <TextInput value={identity.name} onChange={set('name')} placeholder="e.g. Priya" />
       </Field>

@@ -3,9 +3,21 @@
 Voice-first Progressive Web App connecting blue-collar & gig workers with nearby jobs.
 Tap, speak your skill or your need, and get matched on a local map — no 80 MB app install.
 
-> **Status: Phase 1 — core loop working.** Workers go online with skills + location;
-> consumers post jobs and get the nearest available matches via a PostGIS radius query.
+> **Status: Phase 2 — voice-first input working.** Everything in Phase 1, plus a
+> push-to-talk mic on both screens: speak in Hindi/English → speech-to-text →
+> intent extraction → the form prefills and speaks a confirmation back.
 > See the roadmap below for what each phase adds.
+
+### Voice pipeline (Phase 2)
+- **STT:** Groq Whisper if `GROQ_API_KEY` is set, else the browser's built-in
+  speech recognition (Chrome/Android).
+- **Intent:** Groq LLM if a key is set, else a free rule-based keyword parser that
+  handles romanized-Hindi + English (`backend/app/voice.py`).
+- **TTS confirm:** on-device `speechSynthesis` (swap for Piper later).
+- Endpoints: `GET /api/voice/config`, `POST /api/voice/transcribe`, `POST /api/voice/parse`.
+
+**It works with zero API keys** (browser STT + rule parser). Add a free Groq key to
+`backend/.env` for robust vernacular accuracy.
 
 ## API (Phase 1)
 
@@ -81,8 +93,8 @@ and use the "Add to home screen" prompt.
 ## Roadmap
 - **Phase 0 — Foundations ✅:** installable PWA, DB schema, API skeleton, RLS lockdown.
 - **Phase 1 — Text-first core loop ✅:** availability toggle, post a job, PostGIS radius match.
-- **Phase 2 — Voice-first input (next):** push-to-talk → STT → LLM intent extraction → TTS confirm.
-- **Phase 3 — Maps + realtime:** MapLibre job cards, web-push notifications, live updates.
+- **Phase 2 — Voice-first input ✅:** push-to-talk → STT → intent extraction → prefill + TTS confirm.
+- **Phase 3 — Maps + realtime (next):** MapLibre job cards, web-push notifications, live updates.
 - **Phase 4 — Masked calling:** LiveKit audio rooms, no phone numbers shared.
 - **Phase 5 — Payments & escrow:** Razorpay Route, UPI payout on completion.
 - **Phase 6 — Trust & scale:** ratings, KYC, self-hosted STT, SMS/IVR fallback.

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { SKILLS, emojiFor, fmtDistance, labelFor } from '../constants'
-import { useGeo, useLocalStorage } from '../hooks'
+import { speak, useGeo, useLocalStorage } from '../hooks'
 import { Btn, Card, ChipGroup, Field, LocationField, TextInput } from '../ui'
+import VoiceBar from '../VoiceBar'
 
 const HOURS = [1, 2, 4, 8]
 
@@ -19,6 +20,22 @@ export default function WorkerScreen() {
   const [accepted, setAccepted] = useState({}) // jobId -> true
 
   const set = (k) => (e) => setIdentity({ ...identity, [k]: e.target.value })
+
+  const applyIntent = (intent) => {
+    const parts = []
+    if (intent.skill) {
+      setSkills((prev) => (prev.includes(intent.skill) ? prev : [...prev, intent.skill]))
+      parts.push(labelFor(intent.skill))
+    }
+    if (intent.duration_hours) {
+      const nearest = HOURS.reduce((a, b) =>
+        Math.abs(b - intent.duration_hours) < Math.abs(a - intent.duration_hours) ? b : a
+      )
+      setHours(nearest)
+      parts.push(`${nearest} ghante`)
+    }
+    if (parts.length) speak(`${parts.join(', ')}. Sahi hai?`)
+  }
 
   const goOnline = async () => {
     setMsg('')
@@ -170,6 +187,11 @@ export default function WorkerScreen() {
   // ---- go-online form ----
   return (
     <div className="space-y-4">
+      <VoiceBar
+        roleHint="worker"
+        onIntent={applyIntent}
+        example={'Try: "Main plumber hoon, 4 ghante free"'}
+      />
       <Field label="Your name">
         <TextInput value={identity.name} onChange={set('name')} placeholder="e.g. Ravi Kumar" />
       </Field>

@@ -43,5 +43,28 @@ export const api = {
   // consumer
   postJob: (body) => req('/api/jobs', { method: 'POST', body: JSON.stringify(body) }),
   jobMatches: (jobId, radius = 3000) =>
-    req(`/api/jobs/${jobId}/matches?radius_m=${radius}`)
+    req(`/api/jobs/${jobId}/matches?radius_m=${radius}`),
+
+  // voice
+  voiceConfig: () => req('/api/voice/config'),
+  parseTranscript: (transcript, roleHint) =>
+    req('/api/voice/parse', {
+      method: 'POST',
+      body: JSON.stringify({ transcript, role_hint: roleHint })
+    }),
+  transcribe: async (blob) => {
+    const fd = new FormData()
+    fd.append('file', blob, 'audio.webm')
+    const res = await fetch(BASE + '/api/voice/transcribe', { method: 'POST', body: fd })
+    if (!res.ok) {
+      let detail = res.statusText
+      try {
+        detail = (await res.json()).detail || detail
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail)
+    }
+    return res.json()
+  }
 }

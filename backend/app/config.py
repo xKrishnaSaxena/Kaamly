@@ -10,7 +10,21 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     app_env: str = "development"
 
+    # Voice pipeline (optional). Free tier at console.groq.com. Without a key,
+    # STT falls back to the browser and intent uses the rule-based parser.
+    groq_api_key: str = ""
+    groq_stt_model: str = "whisper-large-v3"
+    groq_llm_model: str = "llama-3.3-70b-versatile"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def has_stt(self) -> bool:
+        return bool(self.groq_api_key)
+
+    @property
+    def has_llm(self) -> bool:
+        return bool(self.groq_api_key)
 
     @property
     def cors_origin_list(self) -> list[str]:
