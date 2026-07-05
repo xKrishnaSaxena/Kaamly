@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+
+# generated PWA icons (recreated by scripts/gen-icons.mjs)
+public/pwa-*.png
+public/maskable-*.png
+public/apple-touch-icon.png
+
+# vite-plugin-pwa output
+dev-dist
+
+.DS_Store

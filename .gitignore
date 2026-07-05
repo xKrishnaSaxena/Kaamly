@@ -1,0 +1,4 @@
+.DS_Store
+*.log
+
+# see frontend/.gitignore and backend/.gitignore for per-app rules
