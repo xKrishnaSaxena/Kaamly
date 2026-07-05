@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from .config import settings
 from .db import engine
+from .routers import jobs, workers
 
 # Import models so their tables are registered on Base.metadata.
 from . import models  # noqa: F401
@@ -27,6 +28,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
+app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 
 
 @app.get("/")

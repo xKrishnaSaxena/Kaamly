@@ -3,8 +3,24 @@
 Voice-first Progressive Web App connecting blue-collar & gig workers with nearby jobs.
 Tap, speak your skill or your need, and get matched on a local map — no 80 MB app install.
 
-> **Status: Phase 0 — scaffold.** Installable PWA + FastAPI/PostGIS skeleton + data model.
+> **Status: Phase 1 — core loop working.** Workers go online with skills + location;
+> consumers post jobs and get the nearest available matches via a PostGIS radius query.
 > See the roadmap below for what each phase adds.
+
+## API (Phase 1)
+
+| Method & path | Purpose |
+| --- | --- |
+| `POST /api/workers` | Worker goes online (skills, location, hours) |
+| `PATCH /api/workers/{user_id}/availability` | Toggle availability / update location |
+| `GET /api/workers/nearby` | Browse available workers in a radius |
+| `POST /api/jobs` | Post a job → returns the job + 3 nearest matches |
+| `GET /api/jobs/nearby` | Worker view: open jobs near me |
+| `GET /api/jobs/{job_id}/matches` | Re-run the match for a job |
+| `POST /api/jobs/{job_id}/accept` | Worker accepts → records match, marks job matched |
+
+Matching lives in `backend/app/services.py` (`ST_DWithin` + `ST_Distance`, skill-filtered,
+nearest-first). Interactive API docs at `http://localhost:8000/docs`.
 
 ## Stack (all free / open-source)
 
@@ -63,9 +79,9 @@ To verify the PWA install path: `npm run build && npm run preview`, open in Chro
 and use the "Add to home screen" prompt.
 
 ## Roadmap
-- **Phase 0 — Foundations (here):** installable PWA, DB schema, API skeleton.
-- **Phase 1 — Text-first core loop:** availability toggle, post a job, PostGIS radius match.
-- **Phase 2 — Voice-first input:** push-to-talk → STT → LLM intent extraction → TTS confirm.
+- **Phase 0 — Foundations ✅:** installable PWA, DB schema, API skeleton, RLS lockdown.
+- **Phase 1 — Text-first core loop ✅:** availability toggle, post a job, PostGIS radius match.
+- **Phase 2 — Voice-first input (next):** push-to-talk → STT → LLM intent extraction → TTS confirm.
 - **Phase 3 — Maps + realtime:** MapLibre job cards, web-push notifications, live updates.
 - **Phase 4 — Masked calling:** LiveKit audio rooms, no phone numbers shared.
 - **Phase 5 — Payments & escrow:** Razorpay Route, UPI payout on completion.
