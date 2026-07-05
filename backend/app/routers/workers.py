@@ -6,10 +6,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
+from ..events import hub
 from ..geo import point
 from ..models import User, WorkerProfile
 from ..schemas import AvailabilityUpdate, MatchOut, WorkerCreate, WorkerOut
-from ..services import find_workers, go_online, parse_uuid, worker_coords
+from ..services import (
+    find_workers,
+    go_online,
+    open_jobs_for_worker,
+    parse_uuid,
+    worker_coords,
+)
 
 router = APIRouter()
 
@@ -34,6 +41,25 @@ async def register_worker(body: WorkerCreate, session: AsyncSession = Depends(ge
     """Worker goes online: create/update their profile + availability."""
     user, wp, _ = await go_online(session, body)
     await session.commit()
+
+    # notify any consumers whose open jobs this worker now matches
+    matching = await open_jobs_for_worker(session, body.lat, body.lng, body.skills, 5000)
+    for job in matching:
+        await hub.publish_worker_available(
+            job["consumer_phone"],
+            {
+                "job_id": job["job_id"],
+                "user_id": str(user.id),
+                "name": user.name,
+                "phone": user.phone,
+                "skills": body.skills,
+                "rating_avg": float(wp.rating_avg or 0),
+                "rating_count": int(wp.rating_count or 0),
+                "distance_m": job["distance_m"],
+                "lat": body.lat,
+                "lng": body.lng,
+            },
+        )
     return _worker_out(user, wp, body.lat, body.lng)
 
 

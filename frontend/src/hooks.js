@@ -55,6 +55,45 @@ export function useGeo() {
   return { coords, setCoords, locate, locating, error }
 }
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+// Subscribe to a server-sent-events endpoint. `onEvent` gets each parsed message.
+// EventSource auto-reconnects on drop. Pass enabled=false to stay disconnected.
+export function useEventStream(path, onEvent, enabled = true) {
+  const cb = useRef(onEvent)
+  cb.current = onEvent
+  useEffect(() => {
+    if (!enabled || !path) return
+    const es = new EventSource(API_BASE + path)
+    es.onmessage = (e) => {
+      try {
+        cb.current(JSON.parse(e.data))
+      } catch {
+        /* ignore malformed */
+      }
+    }
+    return () => es.close()
+  }, [path, enabled])
+}
+
+// Foreground notifications (no VAPID/web-push infra needed while the tab is open).
+export async function ensureNotifyPermission() {
+  if (!('Notification' in window)) return false
+  if (Notification.permission === 'granted') return true
+  if (Notification.permission === 'denied') return false
+  return (await Notification.requestPermission()) === 'granted'
+}
+
+export function notify(title, body) {
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/pwa-192x192.png' })
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 // Speak a short confirmation back to the user (free on-device TTS).
 // Phase 6 can swap this for Piper for better vernacular voices.
 export function speak(text, lang = 'hi-IN') {

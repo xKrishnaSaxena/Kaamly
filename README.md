@@ -3,10 +3,23 @@
 Voice-first Progressive Web App connecting blue-collar & gig workers with nearby jobs.
 Tap, speak your skill or your need, and get matched on a local map — no 80 MB app install.
 
-> **Status: Phase 2 — voice-first input working.** Everything in Phase 1, plus a
-> push-to-talk mic on both screens: speak in Hindi/English → speech-to-text →
-> intent extraction → the form prefills and speaks a confirmation back.
+> **Status: Phase 3 — maps + realtime working.** Everything before, plus a live
+> MapLibre/OSM map of nearby jobs (workers) or matched workers (consumers), and
+> instant server-sent-event updates: new jobs stream to online workers and
+> acceptances stream back to consumers — no polling, with in-app notifications.
 > See the roadmap below for what each phase adds.
+
+### Realtime + maps (Phase 3)
+- **Live updates:** FastAPI streams server-sent events. Workers subscribe with
+  their location+skills (`GET /api/events/worker`) and receive matching jobs
+  instantly; consumers subscribe by phone (`GET /api/events/consumer`) for
+  acceptances. In-memory hub in `backend/app/events.py` (Redis for multi-process
+  scale later). Chosen over Supabase Realtime so the RLS lockdown stays intact —
+  the backend remains the only DB gatekeeper.
+- **Map:** MapLibre GL + free OpenStreetMap raster tiles (no key). Job pins are
+  green = urgent, amber = scheduled; lazy-loaded so the initial bundle stays light.
+- **Notifications:** foreground Notification API (full VAPID web-push, for when the
+  app is closed, is a later add).
 
 ### Voice pipeline (Phase 2)
 - **STT:** Groq Whisper if `GROQ_API_KEY` is set, else the browser's built-in
@@ -94,7 +107,7 @@ and use the "Add to home screen" prompt.
 - **Phase 0 — Foundations ✅:** installable PWA, DB schema, API skeleton, RLS lockdown.
 - **Phase 1 — Text-first core loop ✅:** availability toggle, post a job, PostGIS radius match.
 - **Phase 2 — Voice-first input ✅:** push-to-talk → STT → intent extraction → prefill + TTS confirm.
-- **Phase 3 — Maps + realtime (next):** MapLibre job cards, web-push notifications, live updates.
-- **Phase 4 — Masked calling:** LiveKit audio rooms, no phone numbers shared.
+- **Phase 3 — Maps + realtime ✅:** MapLibre/OSM map, SSE live updates, in-app notifications.
+- **Phase 4 — Masked calling (next):** LiveKit audio rooms, no phone numbers shared.
 - **Phase 5 — Payments & escrow:** Razorpay Route, UPI payout on completion.
 - **Phase 6 — Trust & scale:** ratings, KYC, self-hosted STT, SMS/IVR fallback.

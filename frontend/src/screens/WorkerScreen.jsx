@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { SKILLS, emojiFor, fmtDistance, labelFor } from '../constants'
-import { speak, useGeo, useLocalStorage } from '../hooks'
+import {
+  ensureNotifyPermission,
+  notify,
+  speak,
+  useEventStream,
+  useGeo,
+  useLocalStorage
+} from '../hooks'
 import { Btn, Card, ChipGroup, Field, LocationField, TextInput } from '../ui'
+import LazyMap from '../LazyMap'
 import VoiceBar from '../VoiceBar'
+
+const jobColor = (urgency) => (urgency === 'urgent' ? '#22c55e' : '#f59e0b')
 
 const HOURS = [1, 2, 4, 8]
 
@@ -17,7 +27,33 @@ export default function WorkerScreen() {
   const [msg, setMsg] = useState('')
 
   const [jobs, setJobs] = useState([])
-  const [accepted, setAccepted] = useState({}) // jobId -> true
+  const [toast, setToast] = useState(null) // { kind: 'new'|'accepted', category, distance_m }
+
+  // live stream of nearby matching jobs (replaces polling as the primary source)
+  const evPath = profile
+    ? `/api/events/worker?lat=${coords.lat}&lng=${coords.lng}` +
+      `&skills=${encodeURIComponent(profile.skills.join(','))}&radius_m=5000`
+    : null
+  useEventStream(
+    evPath,
+    (evt) => {
+      if (evt.type === 'job_removed') {
+        setJobs((prev) => prev.filter((j) => j.id !== evt.id))
+        return
+      }
+      if (evt.type !== 'job') return
+      setJobs((prev) => (prev.some((j) => j.id === evt.id) ? prev : [evt, ...prev]))
+      setToast({ kind: 'new', category: evt.category, distance_m: evt.distance_m })
+      notify('New job nearby', `${labelFor(evt.category)} · ${fmtDistance(evt.distance_m)}`)
+    },
+    !!profile
+  )
+
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(id)
+  }, [toast])
 
   const set = (k) => (e) => setIdentity({ ...identity, [k]: e.target.value })
 
@@ -54,6 +90,7 @@ export default function WorkerScreen() {
         available_hours: hours
       })
       setProfile(p)
+      ensureNotifyPermission()
     } catch (e) {
       setMsg(e.message)
     } finally {
@@ -88,14 +125,17 @@ export default function WorkerScreen() {
   useEffect(() => {
     if (!profile) return
     refreshJobs()
-    const id = setInterval(refreshJobs, 12000)
+    // SSE delivers new jobs instantly; this slow poll only prunes taken ones
+    const id = setInterval(refreshJobs, 30000)
     return () => clearInterval(id)
   }, [profile, refreshJobs])
 
   const accept = async (jobId) => {
+    const job = jobs.find((j) => j.id === jobId)
     try {
       await api.acceptJob(jobId, identity.phone)
-      setAccepted((a) => ({ ...a, [jobId]: true }))
+      setJobs((prev) => prev.filter((j) => j.id !== jobId))
+      setToast({ kind: 'accepted', category: job?.category })
     } catch (e) {
       setMsg(e.message)
     }
@@ -129,11 +169,39 @@ export default function WorkerScreen() {
           </div>
         </Card>
 
+        {toast && (
+          <button
+            onClick={() => setToast(null)}
+            className="flex w-full animate-rise items-center gap-2 rounded-2xl bg-emerald-400/15 px-4 py-3 text-left ring-1 ring-emerald-400/30"
+          >
+            <span className="text-lg">{toast.kind === 'accepted' ? '✓' : '⚡'}</span>
+            <span className="text-sm font-medium text-emerald-200">
+              {toast.kind === 'accepted'
+                ? `Accepted the ${labelFor(toast.category)} job`
+                : `New ${labelFor(toast.category)} job · ${fmtDistance(toast.distance_m)}`}
+            </span>
+          </button>
+        )}
+
+        <LazyMap
+          center={coords}
+          height={180}
+          points={jobs.map((j) => ({
+            id: j.id,
+            lat: j.lat,
+            lng: j.lng,
+            color: jobColor(j.urgency),
+            label: j.title || labelFor(j.category),
+            sublabel: fmtDistance(j.distance_m)
+          }))}
+        />
+
         <div className="flex items-center justify-between px-1">
           <h2 className="text-sm font-semibold text-white/80">Jobs near you</h2>
-          <button onClick={refreshJobs} className="text-xs text-brand-400">
-            Refresh
-          </button>
+          <span className="flex items-center gap-1.5 text-[11px] text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Live
+          </span>
         </div>
 
         {jobs.length === 0 ? (
@@ -159,18 +227,12 @@ export default function WorkerScreen() {
                   )}
                   <div className="mt-1 text-[11px] text-white/40">{fmtDistance(j.distance_m)}</div>
                 </div>
-                {accepted[j.id] ? (
-                  <span className="shrink-0 rounded-lg bg-emerald-400/20 px-3 py-2 text-xs font-semibold text-emerald-300">
-                    Accepted ✓
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => accept(j.id)}
-                    className="shrink-0 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-[#0B1020] active:scale-95"
-                  >
-                    Accept
-                  </button>
-                )}
+                <button
+                  onClick={() => accept(j.id)}
+                  className="shrink-0 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-[#0B1020] active:scale-95"
+                >
+                  Accept
+                </button>
               </div>
             </Card>
           ))

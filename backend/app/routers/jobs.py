@@ -1,10 +1,11 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
+from ..events import hub
 from ..geo import point
 from ..models import Job, Match, User
 from ..schemas import (
@@ -19,7 +20,9 @@ from ..services import find_jobs, find_workers, get_or_create_user, parse_uuid
 
 router = APIRouter()
 
-DEFAULT_RADIUS_M = 3000
+# Keep consumer-match and worker-view radii the same so both sides agree on
+# who is "nearby".
+DEFAULT_RADIUS_M = 5000
 
 
 def _job_out(job: Job, lat: float, lng: float) -> JobOut:
@@ -41,6 +44,23 @@ def _job_out(job: Job, lat: float, lng: float) -> JobOut:
 async def create_job(body: JobCreate, session: AsyncSession = Depends(get_session)):
     """Consumer posts a job; we return it with the nearest available matches."""
     user = await get_or_create_user(session, body.phone, body.name, "consumer")
+
+    # A consumer has at most one active request per category — a new post
+    # supersedes any earlier open one (prevents duplicate stale postings).
+    superseded = (
+        await session.execute(
+            select(Job.id).where(
+                Job.consumer_id == user.id,
+                Job.category == body.category,
+                Job.status == "open",
+            )
+        )
+    ).scalars().all()
+    if superseded:
+        await session.execute(
+            update(Job).where(Job.id.in_(superseded)).values(status="cancelled")
+        )
+
     job = Job(
         consumer_id=user.id,
         category=body.category,
@@ -59,6 +79,22 @@ async def create_job(body: JobCreate, session: AsyncSession = Depends(get_sessio
     )
     out = JobWithMatches(job=_job_out(job, body.lat, body.lng), matches=matches)
     await session.commit()
+
+    # live-remove any superseded jobs from workers' lists, then push the new one
+    for old_id in superseded:
+        await hub.publish_job_removed(str(old_id))
+    # push the new job to nearby online workers in real time
+    await hub.publish_job_created(
+        {
+            "id": str(job.id),
+            "category": job.category,
+            "title": job.title,
+            "description": job.description,
+            "lat": body.lat,
+            "lng": body.lng,
+            "urgency": job.urgency,
+        }
+    )
     return out
 
 
@@ -129,6 +165,17 @@ async def accept_job(
         existing.status = "accepted"
     job.status = "matched"
     await session.commit()
+
+    # notify the consumer in real time
+    consumer = (
+        await session.execute(select(User).where(User.id == job.consumer_id))
+    ).scalar_one_or_none()
+    await hub.publish_job_accepted(
+        consumer.phone if consumer else None,
+        {"job_id": str(jid), "worker_name": worker.name, "worker_phone": worker.phone},
+    )
+    # remove it from every other worker's live list
+    await hub.publish_job_removed(str(jid))
     return {"status": "accepted", "job_id": str(jid), "worker_id": str(worker.id)}
 
 

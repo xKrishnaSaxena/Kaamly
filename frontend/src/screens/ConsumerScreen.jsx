@@ -1,8 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { SKILLS, emojiFor, fmtDistance, labelFor } from '../constants'
-import { speak, useGeo, useLocalStorage } from '../hooks'
+import {
+  ensureNotifyPermission,
+  notify,
+  speak,
+  useEventStream,
+  useGeo,
+  useLocalStorage
+} from '../hooks'
 import { Btn, Card, ChipGroup, Field, LocationField, Stars, TextArea, TextInput } from '../ui'
+import LazyMap from '../LazyMap'
 import VoiceBar from '../VoiceBar'
 
 export default function ConsumerScreen() {
@@ -14,6 +22,30 @@ export default function ConsumerScreen() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [result, setResult] = useState(null) // { job, matches }
+  const [acceptedBy, setAcceptedBy] = useState(null) // { worker_name, worker_phone }
+
+  // listen for a worker accepting this job
+  const evPath = result ? `/api/events/consumer?phone=${encodeURIComponent(identity.phone)}` : null
+  useEventStream(
+    evPath,
+    (evt) => {
+      if (evt.job_id !== result?.job?.id) return
+      if (evt.type === 'accepted') {
+        setAcceptedBy(evt)
+        notify('Worker on the way!', `${evt.worker_name || 'A worker'} accepted your job`)
+        speak(`${evt.worker_name || 'Worker'} ne aapka kaam accept kar liya hai.`)
+      } else if (evt.type === 'worker_available') {
+        // a matching worker just came online — add them to the live list
+        const { type, job_id, ...worker } = evt
+        setResult((prev) => {
+          if (!prev || prev.matches.some((m) => m.user_id === worker.user_id)) return prev
+          return { ...prev, matches: [worker, ...prev.matches] }
+        })
+        notify('Worker available!', `${worker.name || 'A worker'} is now nearby`)
+      }
+    },
+    !!result
+  )
 
   const set = (k) => (e) => setIdentity({ ...identity, [k]: e.target.value })
 
@@ -43,6 +75,8 @@ export default function ConsumerScreen() {
         urgency
       })
       setResult(res)
+      setAcceptedBy(null)
+      ensureNotifyPermission()
     } catch (e) {
       setMsg(e.message)
     } finally {
@@ -52,6 +86,7 @@ export default function ConsumerScreen() {
 
   const reset = () => {
     setResult(null)
+    setAcceptedBy(null)
     setDescription('')
     setCategory('')
   }
@@ -78,6 +113,35 @@ export default function ConsumerScreen() {
             Posted · {matches.length} worker{matches.length === 1 ? '' : 's'} available nearby
           </div>
         </Card>
+
+        {acceptedBy && (
+          <div className="flex animate-rise items-center justify-between gap-2 rounded-2xl bg-emerald-400/15 px-4 py-3 ring-1 ring-emerald-400/30">
+            <span className="text-sm font-medium text-emerald-200">
+              ✅ {acceptedBy.worker_name || 'A worker'} accepted — on the way!
+            </span>
+            <button
+              onClick={call}
+              className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#0B1020] active:scale-95"
+            >
+              📞 Call
+            </button>
+          </div>
+        )}
+
+        {matches.length > 0 && (
+          <LazyMap
+            center={coords}
+            height={180}
+            points={matches.map((m) => ({
+              id: m.user_id,
+              lat: m.lat,
+              lng: m.lng,
+              color: acceptedBy && acceptedBy.worker_phone === m.phone ? '#22c55e' : '#6366f1',
+              label: m.name || 'Worker',
+              sublabel: fmtDistance(m.distance_m)
+            }))}
+          />
+        )}
 
         {matches.length === 0 ? (
           <Card className="text-center text-sm text-white/50">

@@ -128,6 +128,47 @@ async def find_workers(
     ]
 
 
+_OPEN_JOBS_FOR_WORKER_SQL = """
+select j.id::text as job_id, j.category, j.title, u.phone as consumer_phone,
+       st_distance(j.location, st_setsrid(st_point(:lng, :lat), 4326)::geography)
+           as distance_m
+from jobs j
+join users u on u.id = j.consumer_id
+where j.status = 'open'
+  and j.category = any(:skills)
+  and st_dwithin(j.location, st_setsrid(st_point(:lng, :lat), 4326)::geography,
+                 :radius_m)
+"""
+
+
+async def open_jobs_for_worker(
+    session: AsyncSession,
+    lat: float,
+    lng: float,
+    skills: List[str],
+    radius_m: int,
+) -> List[dict]:
+    """Open jobs (with their consumer's phone) that a newly-online worker matches."""
+    if not skills:
+        return []
+    rows = (
+        await session.execute(
+            text(_OPEN_JOBS_FOR_WORKER_SQL),
+            {"lat": lat, "lng": lng, "skills": skills, "radius_m": radius_m},
+        )
+    ).mappings().all()
+    return [
+        {
+            "job_id": r["job_id"],
+            "category": r["category"],
+            "title": r["title"],
+            "consumer_phone": r["consumer_phone"],
+            "distance_m": round(float(r["distance_m"]), 1),
+        }
+        for r in rows
+    ]
+
+
 _JOBS_SQL = """
 select j.id::text as id, j.category, j.title, j.description,
        st_y(j.location::geometry) as lat,
